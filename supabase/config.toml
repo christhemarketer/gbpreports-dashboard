@@ -1,0 +1,8 @@
+[functions.get-accounts]
+verify_jwt = true
+
+[functions.get-locations]
+verify_jwt = true
+
+[functions.get-report]
+verify_jwt = true
