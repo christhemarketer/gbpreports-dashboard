@@ -310,6 +310,45 @@ const App = () => {
     fetchReport();
   }, [selectedLocation]);
 
+// Handle /auth/callback: exchange ?code for a Supabase session and persist Google token
+useEffect(() => {
+  const run = async () => {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state'); // Supabase requires both to be present
+
+    if (!code || !state) return;
+
+    try {
+      // 1) Turn the code into a Supabase session
+      const { data, error } = await supabase.auth.exchangeCodeForSession({ code });
+      if (error) {
+        console.error('exchangeCodeForSession error:', error);
+        return;
+      }
+
+      // 2) Get the provider access token from the new session
+      const { data: s } = await supabase.auth.getSession();
+      const provider_token = s?.session?.provider_token || null;
+
+      // 3) Ask our Edge Function to store tokens in public.google_tokens
+      if (provider_token) {
+        await supabase.functions.invoke('oauth-exchange', {
+          body: { provider: 'google', provider_token },
+        });
+      }
+
+      // 4) Clean the URL (remove ?code & ?state) and land on the app root
+      window.history.replaceState({}, document.title, '/');
+    } catch (e) {
+      console.error('Auth callback handler failed:', e);
+    }
+  };
+
+  run();
+}, []);
+
+
   const handleDownloadPdf = () => {
     const input = reportRef.current;
     if (!input) return;
