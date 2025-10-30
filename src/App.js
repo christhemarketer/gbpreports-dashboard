@@ -321,22 +321,24 @@ useEffect(() => {
 
     try {
       // 1) Turn the code into a Supabase session
-      const { data, error } = await supabase.auth.exchangeCodeForSession({ code });
-      if (error) {
-        console.error('exchangeCodeForSession error:', error);
-        return;
-      }
+const { data: ex, error } = await supabase.auth.exchangeCodeForSession({ code });
+if (error) {
+  console.error('exchangeCodeForSession error:', error);
+  return;
+}
 
-      // 2) Get the provider access token from the new session
-      const { data: s } = await supabase.auth.getSession();
-      const provider_token = s?.session?.provider_token || null;
+// 2) Use the provider_token from THIS response (more reliable than getSession immediately)
+const provider_token = ex?.session?.provider_token ?? null;
+console.log('provider_token from exchange:', !!provider_token);
 
-      // 3) Ask our Edge Function to store tokens in public.google_tokens
-      if (provider_token) {
-        await supabase.functions.invoke('oauth-exchange', {
-          body: { provider: 'google', provider_token },
-        });
-      }
+// 3) Store tokens via Edge Function
+if (provider_token) {
+  const { data: fnData, error: fnErr } = await supabase.functions.invoke('oauth-exchange', {
+    body: { provider: 'google', provider_token },
+  });
+  console.log('oauth-exchange result:', { fnData, fnErr });
+}
+
 
       // 4) Clean the URL (remove ?code & ?state) and land on the app root
       window.history.replaceState({}, document.title, '/');
