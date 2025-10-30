@@ -299,6 +299,44 @@ const App = () => {
     fetchLocations();
   }, [session]);
 
+// Call oauth-exchange once we have a session, to persist Google tokens in Supabase
+useEffect(() => {
+  const run = async () => {
+    if (!session) return;
+
+    try {
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/oauth-exchange`,
+        {
+          method: 'POST',
+          headers: {
+            // Required by Supabase Edge Functions
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            user_id: session.user.id,     // so the function knows who to associate tokens with
+          }),
+          // credentials are not needed; the function auths via anon key for public access
+        }
+      );
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        console.warn('oauth-exchange failed:', resp.status, text);
+      } else {
+        console.log('oauth-exchange ok');
+      }
+    } catch (e) {
+      console.error('oauth-exchange error:', e);
+    }
+  };
+
+  run();
+}, [session]);
+
+
   useEffect(() => {
     if (!selectedLocation) return;
     const fetchReport = async () => {
