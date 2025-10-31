@@ -1,31 +1,16 @@
 // src/App.js
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell
-} from 'recharts';
-import {
-  Search, Phone, MapPin, Eye, Star, TrendingUp, LogOut, Bot,
-  Link as LinkIcon, Building, Globe, Download, ChevronDown, BarChart2
-} from 'lucide-react';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
-import { supabase } from './supabaseClient'; // uses your env values
+import React, { useEffect, useState } from 'react';
+import { supabase } from './supabaseClient';
 
-/***********************
- * AUTH HELPERS
- ***********************/
-
-// 1) Start Google OAuth (ask for GBP + basic profile/email + offline access)
 const handleLogin = async () => {
   await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      // include basic user scopes along with GBP manage
-      scopes:
-        'https://www.googleapis.com/auth/business.manage ' +
-        'https://www.googleapis.com/auth/userinfo.email ' +
-        'https://www.googleapis.com/auth/userinfo.profile',
+      scopes: [
+        'https://www.googleapis.com/auth/business.manage',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile'
+      ].join(' '),
       redirectTo: `${window.location.origin}/auth/callback`,
       queryParams: { access_type: 'offline', prompt: 'consent' }
     }
@@ -34,517 +19,181 @@ const handleLogin = async () => {
 
 const handleLogout = async () => {
   await supabase.auth.signOut();
-  window.location.reload();
+  window.location.replace('/');
 };
 
-// 2) Exchange the `code` on /auth/callback via your edge function
-async function exchangeCodeForTokens(code) {
-  try {
-    const redirect_uri = `${window.location.origin}/auth/callback`;
-
-    // Use Supabase client to call your function (adds auth automatically)
-    const { error } = await supabase.functions.invoke('oauth-exchange', {
-      body: { code, redirect_uri }
-    });
-
-    if (error) {
-      console.error('oauth-exchange error:', error);
-    }
-  } catch (e) {
-    console.error('oauth-exchange failed:', e);
-  }
-}
-
-/***********************
- * MOCK API (placeholder for now)
- ***********************/
-const mockApi = {
-  getLocations: async () => {
-    return [
-      { id: '1', name: 'Main Street Auto Repair' },
-      { id: '2', name: 'Downtown Cafe' },
-      { id: '3', name: 'Lakeside Family Dentistry' },
-    ];
-  },
-  getReportData: async (locationId) => {
-    const baseData = {
-      '1': {
-        businessName: 'Main Street Auto Repair',
-        nap: { address: '123 Main St, Anytown, USA 12345', phone: '555-0101' },
-        businessType: 'Location-Based Business',
-        profileHealth: 95,
-        metrics: { calls: 188, clicks: 350, directions: 75, photoViews: 1250 },
-        performanceTrend: [
-          { name: 'Apr', Clicks: 320, Calls: 150, Directions: 60 },
-          { name: 'May', Clicks: 310, Calls: 165, Directions: 65 },
-          { name: 'Jun', Clicks: 340, Calls: 180, Directions: 70 },
-          { name: 'Jul', Clicks: 350, Calls: 188, Directions: 75 },
-        ],
-        searchViews: { direct: 1200, discovery: 2800 },
-        keywords: [
-          { keyword: 'mechanic near me', count: 450 },
-          { keyword: 'oil change Anytown', count: 320 },
-          { keyword: 'brake repair', count: 210 },
-          { keyword: 'car ac service', count: 150 },
-          { keyword: 'best auto repair', count: 95 },
-        ],
-        reviews: {
-          total: 124,
-          average: 4.8,
-          recent: [
-            { id: 1, author: 'John D.', rating: 5, text: 'Great service, fast and reliable. Highly recommend!', responded: true },
-            { id: 2, author: 'Jane S.', rating: 5, text: 'The team at Main Street Auto is fantastic. Honest and fair pricing.', responded: true },
-            { id: 3, author: 'Mike W.', rating: 4, text: 'Good experience, but the waiting room could be cleaner.', responded: false },
-          ]
-        },
-        aiSummary:
-          "Your Google Business Profile is performing exceptionally well this month, with a significant increase in website clicks and a high profile health score. Search visibility is strong, especially for 'mechanic near me'. The primary area for improvement is responding to all customer reviews to maintain engagement."
-      },
-      '2': {
-        businessName: 'Downtown Cafe',
-        nap: { address: '456 Central Ave, Anytown, USA 12345', phone: '555-0102' },
-        businessType: 'Location-Based Business',
-        profileHealth: 88,
-        metrics: { calls: 95, clicks: 520, directions: 180, photoViews: 3400 },
-        performanceTrend: [
-          { name: 'Apr', Clicks: 450, Calls: 80, Directions: 150 },
-          { name: 'May', Clicks: 480, Calls: 85, Directions: 160 },
-          { name: 'Jun', Clicks: 500, Calls: 90, Directions: 170 },
-          { name: 'Jul', Clicks: 520, Calls: 95, Directions: 180 },
-        ],
-        searchViews: { direct: 900, discovery: 4100 },
-        keywords: [
-          { keyword: 'coffee shop near me', count: 850 },
-          { keyword: 'best breakfast Anytown', count: 620 },
-          { keyword: 'lunch spots downtown', count: 410 },
-          { keyword: 'cafe with wifi', count: 350 },
-          { keyword: 'espresso', count: 200 },
-        ],
-        reviews: {
-          total: 258,
-          average: 4.6,
-          recent: [
-            { id: 1, author: 'Emily R.', rating: 5, text: 'Love this place! The coffee is amazing and the atmosphere is so cozy.', responded: true },
-            { id: 2, author: 'David L.', rating: 4, text: 'Great food, but service was a little slow during the lunch rush.', responded: false },
-            { id: 3, author: 'Sarah B.', rating: 5, text: 'My go-to spot for meetings. The staff is always friendly!', responded: true },
-          ]
-        },
-        aiSummary:
-          'Performance is strong, driven by a high volume of discovery searches for coffee and breakfast. Website clicks are your strongest metric. While your review volume is high, ensuring timely responses to all feedback, especially constructive criticism, will help improve your average rating and customer loyalty.'
-      },
-      '3': {
-        businessName: 'Lakeside Family Dentistry',
-        nap: { address: '789 Lakeview Dr, Anytown, USA 12345', phone: '555-0103' },
-        businessType: 'Service Area Business',
-        profileHealth: 92,
-        metrics: { calls: 250, clicks: 180, directions: 45, photoViews: 980 },
-        performanceTrend: [
-          { name: 'Apr', Clicks: 150, Calls: 220, Directions: 35 },
-          { name: 'May', Clicks: 160, Calls: 230, Directions: 40 },
-          { name: 'Jun', Clicks: 170, Calls: 240, Directions: 42 },
-          { name: 'Jul', Clicks: 180, Calls: 250, Directions: 45 },
-        ],
-        searchViews: { direct: 1500, discovery: 1300 },
-        keywords: [
-          { keyword: 'dentist Anytown', count: 550 },
-          { keyword: 'family dentist near me', count: 400 },
-          { keyword: 'emergency dentist', count: 250 },
-          { keyword: 'teeth whitening', count: 180 },
-          { keyword: 'dental implants', count: 110 },
-        ],
-        reviews: {
-          total: 95,
-          average: 4.9,
-          recent: [
-            { id: 1, author: 'Tom H.', rating: 5, text: "Dr. Evans is the best. The entire staff makes you feel comfortable.", responded: true },
-            { id: 2, author: 'Maria G.', rating: 5, text: "Painless and professional. I wouldn't go anywhere else.", responded: true },
-            { id: 3, author: 'Chris P.', rating: 5, text: 'Very clean office and friendly front desk. A great experience.', responded: true },
-          ]
-        },
-        aiSummary:
-          "Your profile's strength is its ability to drive high-value actions, with phone calls being the top metric. Your high average review rating and profile health score build significant trust. Focus on continuing to solicit reviews and ensuring your service descriptions are up-to-date with the latest procedures you offer."
-      },
-    };
-
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(baseData[locationId] || baseData['1']), 500);
-    });
-  },
-};
-
-/***********************
- * UI PARTS
- ***********************/
-const StatCard = ({ icon, title, value }) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm flex items-center space-x-4 hover:shadow-lg transition-shadow duration-300">
-    <div className="bg-sky-100 text-sky-600 p-3 rounded-full">{icon}</div>
-    <div>
-      <p className="text-gray-500 text-sm font-medium">{title}</p>
-      <p className="text-3xl font-bold text-gray-800">{value}</p>
-    </div>
-  </div>
-);
-
-const SearchViewsChart = ({ data }) => {
-  const chartData = [
-    { name: 'Direct', value: data.direct },
-    { name: 'Discovery', value: data.discovery },
-  ];
-  const COLORS = ['#0ea5e9', '#6366f1'];
-
-  return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full">
-      <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-        <BarChart2 className="w-5 h-5 mr-2 text-gray-400" />
-        Search Views Breakdown
-      </h3>
-      <div className="h-64 w-full">
-        <ResponsiveContainer>
-          <PieChart>
-            <Pie
-              data={chartData}
-              cx="50%"
-              cy="50%"
-              innerRadius={60}
-              outerRadius={80}
-              paddingAngle={5}
-              dataKey="value"
-            >
-              {chartData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <text
-              x="50%"
-              y="50%"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              className="text-2xl font-bold fill-gray-700"
-            >
-              {((data.direct + data.discovery) / 1000).toFixed(1)}k
-            </text>
-            <text x="50%" y="50%" dy="20" textAnchor="middle" className="text-sm fill-gray-500">
-              Total Searches
-            </text>
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="flex justify-center mt-4 space-x-4 text-sm">
-        <div className="flex items-center">
-          <span className="w-3 h-3 rounded-full bg-sky-500 mr-2"></span>Direct: {data.direct}
-        </div>
-        <div className="flex items-center">
-          <span className="w-3 h-3 rounded-full bg-indigo-500 mr-2"></span>Discovery: {data.discovery}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/***********************
- * MAIN APP
- ***********************/
-const App = () => {
-  // Auth/session
+export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Dashboard state
   const [locations, setLocations] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState('');
-  const [reportData, setReportData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const reportRef = useRef(null);
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  // A) Bootstrap auth + subscribe
+  // Boot session + subscribe
   useEffect(() => {
-    const init = async () => {
+    (async () => {
       const { data } = await supabase.auth.getSession();
       setSession(data.session ?? null);
       setAuthLoading(false);
-    };
-    init();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s ?? null);
-    });
+    })();
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => setSession(s ?? null));
     return () => sub.subscription?.unsubscribe();
   }, []);
 
-  // B) Handle /auth/callback to store tokens, then clean URL
+  // Handle /auth/callback (exchange code -> session, then store provider_token)
   useEffect(() => {
-    const url = new URL(window.location.href);
-    if (url.pathname.startsWith('/auth/callback')) {
+    (async () => {
+      const url = new URL(window.location.href);
+      if (!url.pathname.startsWith('/auth/callback')) return;
       const code = url.searchParams.get('code');
-      if (code) {
-        exchangeCodeForTokens(code).finally(() => {
-          window.history.replaceState({}, '', '/');
-        });
-      } else {
+      const state = url.searchParams.get('state');
+      if (!code || !state) {
         window.history.replaceState({}, '', '/');
+        return;
       }
-    }
+
+      try {
+        const { data, error } = await supabase.auth.exchangeCodeForSession({ code });
+        if (error) {
+          console.error('exchangeCodeForSession error:', error);
+        } else {
+          const provider_token = data?.session?.provider_token;
+          if (provider_token) {
+            const { error: fnErr } = await supabase.functions.invoke('oauth-exchange', {
+              body: { provider: 'google', provider_token },
+            });
+            if (fnErr) console.error('oauth-exchange error:', fnErr);
+          }
+        }
+      } catch (e) {
+        console.error('Auth callback failed:', e);
+      } finally {
+        window.history.replaceState({}, '', '/'); // clean URL
+      }
+    })();
   }, []);
 
-  // C) Load mock data after login (until live API wiring is complete)
+  // Load real locations from your Edge Function
+  const loadLocations = async () => {
+    setErrorMsg('');
+    setLocations([]);
+    setSelectedLocation('');
+    setReport(null);
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-locations', { body: {} });
+      if (error) throw error;
+      const list = data?.locations || data || [];
+      setLocations(list);
+      if (list.length) setSelectedLocation(list[0]?.name || list[0]?.id || list[0]);
+    } catch (e) {
+      console.error('get-locations error:', e);
+      setErrorMsg(`get-locations failed: ${e.message || e.toString()}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load real report for a chosen location
+  const loadReport = async (locationIdOrName) => {
+    if (!locationIdOrName) return;
+    setErrorMsg('');
+    setReport(null);
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-report', {
+        body: { locationId: locationIdOrName },
+      });
+      if (error) throw error;
+      setReport(data);
+    } catch (e) {
+      console.error('get-report error:', e);
+      setErrorMsg(`get-report failed: ${e.message || e.toString()}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Once signed in, load locations immediately
   useEffect(() => {
-    if (!session) return;
-    const fetchLocations = async () => {
-      const locs = await mockApi.getLocations();
-      setLocations(locs);
-      if (locs.length > 0) setSelectedLocation(locs[0].id);
-    };
-    fetchLocations();
+    if (session) loadLocations();
   }, [session]);
 
-// Call oauth-exchange once we have a session, to persist Google tokens in Supabase
-useEffect(() => {
-  const run = async () => {
-    if (!session) return;
-
-    try {
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/oauth-exchange`,
-        {
-          method: 'POST',
-          headers: {
-            // Required by Supabase Edge Functions
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            user_id: session.user.id,     // so the function knows who to associate tokens with
-          }),
-          // credentials are not needed; the function auths via anon key for public access
-        }
-      );
-
-      if (!resp.ok) {
-        const text = await resp.text();
-        console.warn('oauth-exchange failed:', resp.status, text);
-      } else {
-        console.log('oauth-exchange ok');
-      }
-    } catch (e) {
-      console.error('oauth-exchange error:', e);
-    }
-  };
-
-  run();
-}, [session]);
-
-
+  // If default was set, load that report
   useEffect(() => {
-    if (!selectedLocation) return;
-    const fetchReport = async () => {
-      setLoading(true);
-      const data = await mockApi.getReportData(selectedLocation);
-      setReportData(data);
-      setLoading(false);
-    };
-    fetchReport();
+    if (selectedLocation) loadReport(selectedLocation);
   }, [selectedLocation]);
 
-// Handle /auth/callback: exchange ?code for a Supabase session and persist Google token
-useEffect(() => {
-  const run = async () => {
-    const url = new URL(window.location.href);
-    const code = url.searchParams.get('code');
-    const state = url.searchParams.get('state'); // Supabase requires both to be present
-
-    if (!code || !state) return;
-
-    try {
-      // 1) Turn the code into a Supabase session
-const { data: ex, error } = await supabase.auth.exchangeCodeForSession({ code });
-if (error) {
-  console.error('exchangeCodeForSession error:', error);
-  return;
-}
-
-// 2) Use the provider_token from THIS response (more reliable than getSession immediately)
-const provider_token = ex?.session?.provider_token ?? null;
-console.log('provider_token from exchange:', !!provider_token);
-
-// 3) Store tokens via Edge Function
-if (provider_token) {
-  const { data: fnData, error: fnErr } = await supabase.functions.invoke('oauth-exchange', {
-    body: { provider: 'google', provider_token },
-  });
-  console.log('oauth-exchange result:', { fnData, fnErr });
-}
-
-
-      // 4) Clean the URL (remove ?code & ?state) and land on the app root
-      window.history.replaceState({}, document.title, '/');
-    } catch (e) {
-      console.error('Auth callback handler failed:', e);
-    }
-  };
-
-  run();
-}, []);
-
-
-  const handleDownloadPdf = () => {
-    const input = reportRef.current;
-    if (!input) return;
-
-    html2canvas(input, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#f0f2f5'
-    }).then((canvas) => {
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'p',
-        unit: 'px',
-        format: [canvas.width, canvas.height],
-      });
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-      const locationName = reportData?.businessName.replace(/ /g, '_') || 'report';
-      pdf.save(`${locationName}_GBP_Report.pdf`);
-    });
-  };
-
-  const selectedLocationName =
-    locations.find((l) => l.id === selectedLocation)?.name || 'Select a Location';
-
-  /********** Renders **********/
+  /* ---------------- RENDER ---------------- */
   if (authLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <span className="text-gray-600">Checking sign-in…</span>
+      <div style={{display:'flex',minHeight:'100vh',alignItems:'center',justifyContent:'center'}}>
+        Checking sign-in…
       </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <div className="bg-white shadow-md rounded-2xl p-8 text-center">
-          <h1 className="text-2xl font-bold mb-2">GBP Reports</h1>
-          <p className="text-gray-600 mb-6">Sign in with Google to view your dashboard.</p>
-          <button
-            onClick={handleLogin}
-            className="px-4 py-2 rounded-md bg-sky-600 hover:bg-sky-700 text-white font-medium"
-          >
-            Sign in with Google
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading && !reportData) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100">
-        <div className="flex items-center space-x-2 text-gray-500">
-          <svg
-            className="animate-spin h-8 w-8 text-sky-500"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <span className="text-xl">Loading Dashboard...</span>
-        </div>
+      <div style={{display:'flex',minHeight:'100vh',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:12}}>
+        <h1>GBP Reports (Live)</h1>
+        <p>Sign in with Google to fetch your real locations and report.</p>
+        <button onClick={handleLogin} style={{padding:'8px 14px'}}>Sign in with Google</button>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-100 font-sans">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-6 flex items-center space-x-3">
-          <img
-            src="https://gbprocket.com/wp-content/uploads/sites/2/2024/05/logo-blacktext-scaled.png"
-            alt="GBP Rocket Logo"
-            className="h-8 w-auto"
-          />
-        </div>
-        <nav className="flex-1 px-4 py-4">
-          <a href="#!" className="flex items-center px-4 py-2 text-sm font-medium text-white bg-sky-500 rounded-lg">
-            <BarChart2 className="w-5 h-5 mr-3" />
-            Dashboard
-          </a>
-        </nav>
-        <div className="p-4 border-t border-gray-200">
-          <button
-            onClick={handleLogout}
-            className="flex items-center w-full px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+    <div style={{maxWidth:980,margin:'40px auto',padding:'0 16px',fontFamily:'system-ui, -apple-system, Segoe UI, Roboto, Arial'}}>
+      <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <h2>GBP Reports (Live JSON)</h2>
+        <button onClick={handleLogout}>Logout</button>
+      </header>
+
+      <section style={{marginBottom:16,padding:12,background:'#f7f7f7',borderRadius:8}}>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <label htmlFor="loc">Location:</label>
+          <select
+            id="loc"
+            value={selectedLocation || ''}
+            onChange={(e) => setSelectedLocation(e.target.value)}
+            disabled={loading || !locations.length}
           >
-            <LogOut className="w-5 h-5 mr-3" />
-            Logout
-          </button>
+            {locations.map((loc, idx) => {
+              const id = loc.id || loc.name || String(loc);
+              const label = loc.name || loc.title || loc.locationName || id;
+              return <option key={idx} value={id}>{label}</option>;
+            })}
+          </select>
+          <button onClick={() => loadLocations()} disabled={loading}>Reload locations</button>
+          <button onClick={() => loadReport(selectedLocation)} disabled={loading || !selectedLocation}>Reload report</button>
         </div>
-      </aside>
+        {!locations.length && !loading && (
+          <div style={{marginTop:8,color:'#b45309'}}>No locations returned yet.</div>
+        )}
+      </section>
 
-      {/* Main Content */}
-      <main className="flex-1 p-8">
-        <header className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-400">Client Dashboard</h1>
-            <p className="text-sm text-gray-500">Google Business Profile Overview</p>
-          </div>
-          <div className="flex items-center space-x-4">
-            <div className="relative">
-              <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="flex items-center justify-between w-64 px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500"
-              >
-                <span className="truncate">{selectedLocationName}</span>
-                <ChevronDown
-                  className={`w-5 h-5 text-gray-400 transition-transform ${isDropdownOpen ? 'transform rotate-180' : ''}`}
-                />
-              </button>
-              {isDropdownOpen && (
-                <div className="absolute z-10 mt-1 w-64 bg-white shadow-lg border rounded-md">
-                  {locations.map((loc) => (
-                    <a
-                      key={loc.id}
-                      href="#!"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setSelectedLocation(loc.id);
-                        setIsDropdownOpen(false);
-                      }}
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                      {loc.name}
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={handleDownloadPdf}
-              className="flex items-center px-4 py-2 text-sm font-medium text-white bg-sky-500 hover:bg-sky-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download PDF
-            </button>
-          </div>
-        </header>
-
-        <div className="space-y-8" ref={reportRef}>
-          {/* MOCK DATA RENDER */}
-          {/* ...existing dashboard sections unchanged... */}
+      {errorMsg && (
+        <div style={{marginBottom:16,padding:12,background:'#fee2e2',border:'1px solid #fecaca',borderRadius:8,color:'#991b1b'}}>
+          {errorMsg}
         </div>
-      </main>
+      )}
+
+      <section>
+        <h3 style={{margin:'8px 0'}}>Report (raw response)</h3>
+        {loading && <div>Loading…</div>}
+        {!loading && report && (
+          <pre style={{background:'#0b1021',color:'#d1e7ff',padding:16,borderRadius:8,overflow:'auto'}}>
+{JSON.stringify(report, null, 2)}
+          </pre>
+        )}
+        {!loading && !report && (
+          <div style={{color:'#6b7280'}}>Select a location to load its report.</div>
+        )}
+      </section>
     </div>
   );
-};
-
-export default App;
+}
