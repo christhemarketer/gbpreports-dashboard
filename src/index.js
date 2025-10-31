@@ -1,16 +1,8 @@
-// src/supabaseClient.js
-import { createClient } from '@supabase/supabase-js';
+// src/index.js
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl) throw new Error('VITE_SUPABASE_URL is missing');
-if (!supabaseAnonKey) throw new Error('VITE_SUPABASE_ANON_KEY is missing');
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
-
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
