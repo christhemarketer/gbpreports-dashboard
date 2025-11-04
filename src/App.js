@@ -2,6 +2,30 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
 
+async function exchangeGoogleTokenIfPresent() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+
+  // Try several places Supabase may expose the Google token
+  const provider_token =
+    session.provider_token ||
+    session.user?.identities?.find(i => i.provider === 'google')?.identity_data?.access_token ||
+    session.user?.identities?.[0]?.identity_data?.access_token ||
+    session.user?.identities?.[0]?.identity_data?.token;
+
+  console.log('[oauth-exchange] token present?', !!provider_token);
+  if (!provider_token) return;
+
+  try {
+    const { data, error } = await supabase.functions.invoke('oauth-exchange', {
+      body: { provider_token },
+    });
+    console.log('[oauth-exchange] response', { data, error });
+  } catch (e) {
+    console.error('[oauth-exchange] invoke failed', e);
+  }
+}
+
 /* ------------ Auth helpers ------------ */
 const handleLogin = async () => {
   await supabase.auth.signInWithOAuth({
@@ -38,7 +62,9 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
+      if (session) await exchangeGoogleTokenIfPresent();
       setSession(data?.session ?? null);
+      if (s) await exchangeGoogleTokenIfPresent();
       setAuthLoading(false);
       console.log('[auth] initial session:', data?.session ? 'present' : 'null');
     })();
