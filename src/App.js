@@ -40,9 +40,11 @@ export default function App() {
       const { data } = await supabase.auth.getSession();
       setSession(data?.session ?? null);
       setAuthLoading(false);
+      console.log('[auth] initial session:', data?.session ? 'present' : 'null');
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
+      console.log('[auth] state change:', _evt, !!s);
       setSession(s ?? null);
     });
     return () => sub.subscription?.unsubscribe();
@@ -63,17 +65,25 @@ export default function App() {
 
       try {
         const { data, error } = await supabase.auth.exchangeCodeForSession({ code });
+        console.log('[auth] exchangeCodeForSession:', { hasError: !!error, hasProviderToken: !!data?.session?.provider_token });
+
         if (!error && data?.session?.provider_token) {
-          // hand provider access token to our function so it can mint/refresh tokens server-side
+          // Hand provider access token to our function so it can mint/refresh tokens server-side
           const { error: fnErr } = await supabase.functions.invoke('oauth-exchange', {
+            headers: {
+              // IMPORTANT: Pass the user JWT to identify the user in the Edge Function
+              Authorization: `Bearer ${data.session.access_token}`,
+              'Content-Type': 'application/json',
+            },
             body: { provider: 'google', provider_token: data.session.provider_token },
           });
-          if (fnErr) console.error('oauth-exchange error:', fnErr);
+          if (fnErr) console.error('[oauth-exchange] error:', fnErr);
+          else console.log('[oauth-exchange] ok');
         } else if (error) {
-          console.error('exchangeCodeForSession error:', error);
+          console.error('[auth] exchange error:', error);
         }
       } catch (e) {
-        console.error('Auth callback failed:', e);
+        console.error('[auth] callback failed:', e);
       } finally {
         // Clean the URL either way
         window.history.replaceState({}, '', '/');
@@ -81,7 +91,7 @@ export default function App() {
     })();
   }, []);
 
-  /* ------------ Data loaders ------------ */
+  /* ------------ Helpers ------------ */
   const normalizeLocations = (raw) => {
     // Accept { locations: [...] } OR [...] OR anything else -> []
     if (Array.isArray(raw)) return raw;
@@ -89,7 +99,13 @@ export default function App() {
     return [];
   };
 
+  /* ------------ Data loaders ------------ */
   const loadLocations = async () => {
+    if (!session?.access_token) {
+      console.warn('[get-locations] no session access token; aborting');
+      return;
+    }
+
     setErrorMsg('');
     setLocations([]);
     setSelectedLocation('');
@@ -97,17 +113,33 @@ export default function App() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('get-locations', { body: {} });
+      console.log('[get-locations] invoking with user JWT');
+      const { data, error } = await supabase.functions.invoke('get-locations', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: {}, // your function doesn’t need a payload for this
+      });
+      console.log('[get-locations] response:', { error, data });
+
       if (error) throw error;
+
       const list = normalizeLocations(data);
       setLocations(list);
+
       if (list.length) {
         const first = list[0];
-        const id = first?.id || first?.name || first?.title || first?.locationName || String(first);
+        const id =
+          first?.id ||
+          first?.name ||
+          first?.title ||
+          first?.locationName ||
+          String(first);
         setSelectedLocation(id);
       }
     } catch (e) {
-      console.error('get-locations error:', e);
+      console.error('[get-locations] error:', e);
       setErrorMsg(`get-locations failed: ${e.message || e.toString()}`);
     } finally {
       setLoading(false);
@@ -115,19 +147,30 @@ export default function App() {
   };
 
   const loadReport = async (locationIdOrName) => {
-    if (!locationIdOrName) return;
+    if (!session?.access_token || !locationIdOrName) {
+      console.warn('[get-report] missing token or locationId; aborting');
+      return;
+    }
+
     setErrorMsg('');
     setReport(null);
     setLoading(true);
 
     try {
+      console.log('[get-report] invoking with locationId:', locationIdOrName);
       const { data, error } = await supabase.functions.invoke('get-report', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
         body: { locationId: locationIdOrName },
       });
+      console.log('[get-report] response:', { error, hasData: !!data });
+
       if (error) throw error;
       setReport(data ?? null);
     } catch (e) {
-      console.error('get-report error:', e);
+      console.error('[get-report] error:', e);
       setErrorMsg(`get-report failed: ${e.message || e.toString()}`);
     } finally {
       setLoading(false);
@@ -136,8 +179,8 @@ export default function App() {
 
   /* ------------ Auto-load after sign-in ------------ */
   useEffect(() => {
-    if (session) loadLocations();
-  }, [session]);
+    if (session?.access_token) loadLocations();
+  }, [session?.access_token]); // only when token is ready
 
   useEffect(() => {
     if (selectedLocation) loadReport(selectedLocation);
