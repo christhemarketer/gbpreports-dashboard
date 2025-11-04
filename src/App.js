@@ -62,16 +62,17 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
-      if (session) await exchangeGoogleTokenIfPresent();
-      setSession(data?.session ?? null);
-      if (s) await exchangeGoogleTokenIfPresent();
+      const current = data?.session ?? null;
+      setSession(current);
+      console.log('[auth] initial session:', current ? 'present' : 'null');
+      if (current) await exchangeGoogleTokenIfPresent();
       setAuthLoading(false);
-      console.log('[auth] initial session:', data?.session ? 'present' : 'null');
     })();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, s) => {
       console.log('[auth] state change:', _evt, !!s);
       setSession(s ?? null);
+      if (s) await exchangeGoogleTokenIfPresent();
     });
     return () => sub.subscription?.unsubscribe();
   }, []);
@@ -94,10 +95,8 @@ export default function App() {
         console.log('[auth] exchangeCodeForSession:', { hasError: !!error, hasProviderToken: !!data?.session?.provider_token });
 
         if (!error && data?.session?.provider_token) {
-          // Hand provider access token to our function so it can mint/refresh tokens server-side
           const { error: fnErr } = await supabase.functions.invoke('oauth-exchange', {
             headers: {
-              // IMPORTANT: Pass the user JWT to identify the user in the Edge Function
               Authorization: `Bearer ${data.session.access_token}`,
               'Content-Type': 'application/json',
             },
@@ -119,7 +118,6 @@ export default function App() {
 
   /* ------------ Helpers ------------ */
   const normalizeLocations = (raw) => {
-    // Accept { locations: [...] } OR [...] OR anything else -> []
     if (Array.isArray(raw)) return raw;
     if (raw && Array.isArray(raw.locations)) return raw.locations;
     return [];
@@ -145,7 +143,7 @@ export default function App() {
           Authorization: `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
-        body: {}, // your function doesn’t need a payload for this
+        body: {},
       });
       console.log('[get-locations] response:', { error, data });
 
@@ -206,7 +204,7 @@ export default function App() {
   /* ------------ Auto-load after sign-in ------------ */
   useEffect(() => {
     if (session?.access_token) loadLocations();
-  }, [session?.access_token]); // only when token is ready
+  }, [session?.access_token]);
 
   useEffect(() => {
     if (selectedLocation) loadReport(selectedLocation);
